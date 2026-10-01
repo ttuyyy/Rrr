@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Carte magique</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#0e241d;--ink:#f6f1e4;--mut:#9fb3a8;--gold:#d9b45b;--panel:rgba(9,22,17,.9);--line:rgba(246,241,228,.18);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e241d}}
+:root[data-theme="dark"]{--bg:#0e241d}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:"Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;overflow:hidden}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+#start{height:100%;display:flex;flex-direction:column;justify-content:center;gap:20px;padding:28px;max-width:520px;margin:0 auto}
+#start h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(40px,12vw,64px);line-height:1;margin:0;font-weight:700;letter-spacing:-.01em}
+#start p{margin:0;color:var(--mut);line-height:1.5;max-width:42ch}
+.btn{background:var(--gold);color:#241a05;border:0;border-radius:999px;padding:14px 26px;font-weight:700;font-size:17px;align-self:flex-start}
+.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line);padding:10px 16px;font-size:15px;font-weight:600}
+#err{color:#ffb4a8;min-height:1.4em;font-size:14px}
+#stage{display:none;position:relative;height:100%;background:#000;overflow:hidden}
+video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+video.mirror{transform:scaleX(-1)}
+#card{position:absolute;touch-action:none;cursor:grab;transition:opacity .14s;transform:rotate(var(--rot,0deg))}
+#card.gone,#card.calib{opacity:0;pointer-events:none}
+#card canvas{display:block;width:100%;height:auto;border-radius:6%}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+#flash.go{animation:fl .35s ease-out}
+@keyframes fl{0%{opacity:.7}100%{opacity:0}}
+#chip{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);left:12px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:14px}
+#panel{position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:14px 14px calc(env(safe-area-inset-bottom,0px) + 14px);display:grid;gap:12px;max-height:60%;overflow-y:auto}
+#panel[hidden]{display:none}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mut);flex:1;min-width:120px}
+select{background:#16352b;border:1px solid var(--line);border-radius:10px;padding:9px}
+input[type=range]{width:100%;accent-color:var(--gold)}
+#meter{position:relative;height:8px;border-radius:4px;background:#16352b;overflow:hidden}
+#bar{height:100%;width:0;background:var(--gold)}
+#thr{position:absolute;top:0;bottom:0;width:2px;background:#fff}
+#show{position:absolute;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--panel);display:none;font-size:20px}
+@media (prefers-reduced-motion:reduce){#card,#flash.go{transition:none;animation:none}}
+</style>
+</head>
+<body>
+<section id="start">
+  <h1>Carte magique</h1>
+  <p>Tiens une carte devant ta caméra : à l'écran, tout le monde voit une autre carte. Claque des doigts, le filtre disparaît et la vraie carte apparaît.</p>
+  <button class="btn" id="go">Ouvrir la caméra</button>
+  <div id="err" role="alert"></div>
+</section>
+
+<section id="stage">
+  <video id="vid" playsinline muted></video>
+  <div id="card"><canvas id="cv" width="500" height="700"></canvas></div>
+  <div id="flash"></div>
+  <div id="chip">Filtre actif : claque des doigts</div>
+  <button id="show" aria-label="Afficher les réglages">⚙</button>
+  <div id="panel">
+    <div class="row">
+      <label>Valeur
+        <select id="rank"></select>
+      </label>
+      <label>Couleur
+        <select id="suit">
+          <option value="♥">Cœur</option><option value="♦">Carreau</option>
+          <option value="♠">Pique</option><option value="♣">Trèfle</option>
+        </select>
+      </label>
+      <label>Taille de la carte
+        <input type="range" id="size" min="15" max="90" value="42">
+      </label>
+    </div>
+    <label>Seuil du claquement (la barre blanche)
+      <input type="range" id="sens" min="0.03" max="0.5" step="0.01" value="0.12">
+      <div id="meter"><div id="bar"></div><div id="thr"></div></div>
+    </label>
+    <label>Tolérance de couleur du suivi
+      <input type="range" id="tol" min="20" max="120" value="55">
+    </label>
+    <div class="row">
+      <button class="btn alt" id="trk">Suivre ma carte</button>
+      <button class="btn alt" id="snap">Claquer (manuel)</button>
+      <button class="btn alt" id="again">Remettre le filtre</button>
+      <button class="btn alt" id="mir">Miroir</button>
+      <button class="btn alt" id="hide">Masquer les réglages</button>
+    </div>
+  </div>
+</section>
+
+<script>
+const $=id=>document.getElementById(id);
+const stage=$('stage'),vid=$('vid'),card=$('card'),cv=$('cv');
+let armed=false,last=0,base=0,an=null,buf=null;
+
+/* --- Carte dessinée --- */
+const L=.3,C=.5,R=.7;
+const six=[[L,.2],[R,.2],[L,.5],[R,.5],[L,.8],[R,.8]];
+const PIPS={'2':[[C,.2],[C,.8]],'3':[[C,.2],[C,.5],[C,.8]],'4':[[L,.2],[R,.2],[L,.8],[R,.8]],
+'5':[[L,.2],[R,.2],[C,.5],[L,.8],[R,.8]],'6':six,'7':[...six,[C,.35]],'8':[...six,[C,.35],[C,.65]],
+'9':[[L,.2],[R,.2],[L,.4],[R,.4],[L,.6],[R,.6],[L,.8],[R,.8],[C,.5]],
+'10':[[L,.2],[R,.2],[L,.4],[R,.4],[L,.6],[R,.6],[L,.8],[R,.8],[C,.3],[C,.7]]};
+const RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+RANKS.forEach(r=>{const o=document.createElement('option');o.value=o.textContent=r;$('rank').appendChild(o)});
+$('rank').value='6';
+
+function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
+function drawCard(){
+  const r=$('rank').value,s=$('suit').value+'\uFE0E',c=cv.getContext('2d'),W=500,H=700;
+  c.clearRect(0,0,W,H);
+  c.fillStyle='#fbfaf6';rr(c,2,2,W-4,H-4,30);c.fill();
+  c.strokeStyle='#cfc9bb';c.lineWidth=4;c.stroke();
+  c.fillStyle=(s[0]==='♥'||s[0]==='♦')?'#c1272d':'#1a1a1a';
+  c.textAlign='center';c.textBaseline='middle';
+  const corner=()=>{c.font='bold 64px Georgia,serif';c.fillText(r,52,64);c.font='54px serif';c.fillText(s,52,124)};
+  corner();c.save();c.translate(W,H);c.rotate(Math.PI);corner();c.restore();
+  if(PIPS[r]){
+    PIPS[r].forEach(([x,y])=>{c.save();c.translate(x*W,y*H);if(y>.5)c.rotate(Math.PI);c.font='92px serif';c.fillText(s,0,0);c.restore()});
+  }else if(r==='A'){c.font='240px serif';c.fillText(s,W/2,H/2)}
+  else{c.font='bold 260px Georgia,serif';c.fillText(r,W/2,H*.42);c.font='110px serif';c.fillText(s,W/2,H*.74)}
+}
+drawCard();$('rank').onchange=$('suit').onchange=drawCard;
+
+/* --- Position et taille --- */
+function setSize(){const w=stage.clientWidth*$('size').value/100,cx=card.offsetLeft+card.offsetWidth/2,cy=card.offsetTop+card.offsetHeight/2;
+  card.style.width=w+'px';card.style.left=(cx-w/2)+'px';card.style.top=(cy-w*1.4/2)+'px'}
+function place(){const w=stage.clientWidth*$('size').value/100;card.style.width=w+'px';
+  card.style.left=(stage.clientWidth-w)/2+'px';card.style.top=Math.max(20,(stage.clientHeight*.4-w*.7))+'px'}
+$('size').oninput=setSize;
+let drag=null;
+card.addEventListener('pointerdown',e=>{if(T||calib)return;drag={x:e.clientX-card.offsetLeft,y:e.clientY-card.offsetTop};card.setPointerCapture(e.pointerId);card.style.cursor='grabbing'});
+card.addEventListener('pointermove',e=>{if(!drag)return;card.style.left=(e.clientX-drag.x)+'px';card.style.top=(e.clientY-drag.y)+'px'});
+card.addEventListener('pointerup',()=>{drag=null;card.style.cursor='grab'});
+
+/* --- Révélation --- */
+function reveal(){
+  if(!armed)return;armed=false;card.classList.add('gone');
+  const f=$('flash');f.classList.remove('go');void f.offsetWidth;f.classList.add('go');
+  $('chip').textContent='Carte révélée';
+}
+function rearm(){card.classList.remove('gone');armed=true;$('chip').textContent='Filtre actif : claque des doigts'}
+$('snap').onclick=reveal;$('again').onclick=rearm;
+$('mir').onclick=()=>vid.classList.toggle('mirror');
+$('hide').onclick=()=>{$('panel').hidden=true;$('show').style.display='block'};
+$('show').onclick=()=>{$('panel').hidden=false;$('show').style.display='none'};
+$('sens').oninput=()=>{$('thr').style.left=($('sens').value/.5*100)+'%'};
+$('sens').oninput();
+
+/* --- Détection du claquement (micro, filtre passe-haut) --- */
+function listen(stream){
+  const ac=new (window.AudioContext||window.webkitAudioContext)();
+  if(ac.state==='suspended')ac.resume();
+  const src=ac.createMediaStreamSource(stream),hp=ac.createBiquadFilter();
+  hp.type='highpass';hp.frequency.value=2000;
+  an=ac.createAnalyser();an.fftSize=1024;buf=new Float32Array(an.fftSize);
+  src.connect(hp);hp.connect(an);
+  (function loop(){
+    an.getFloatTimeDomainData(buf);
+    let p=0;for(let i=0;i<buf.length;i++){const a=Math.abs(buf[i]);if(a>p)p=a}
+    $('bar').style.width=Math.min(100,p/.5*100)+'%';
+    const now=performance.now();
+    if(armed&&p>+$('sens').value&&p>base*3&&now-last>500){last=now;reveal()}
+    base=base*.98+p*.02;
+    requestAnimationFrame(loop);
+  })();
+}
+
+/* --- Suivi automatique de la carte (couleur + moments) --- */
+const LW=160,lc=document.createElement('canvas'),lx=lc.getContext('2d',{willReadFrequently:true});
+let T=null,calib=false,S=null,lost=false;
+const status=()=>{$('chip').textContent=armed?'Filtre actif : claque des doigts':'Carte révélée'};
+function geom(){const sw=stage.clientWidth,sh=stage.clientHeight,vw=vid.videoWidth,vh=vid.videoHeight;
+  const k=vw/LW,s=Math.max(sw/vw,sh/vh);return{sw,sh,k,s,ox:(sw-vw*s)/2,oy:(sh-vh*s)/2,lh:Math.round(LW*vh/vw),m:vid.classList.contains('mirror')}}
+function frame(g){if(lc.width!==LW||lc.height!==g.lh){lc.width=LW;lc.height=g.lh}lx.drawImage(vid,0,0,LW,g.lh);return lx.getImageData(0,0,LW,g.lh).data}
+stage.addEventListener('pointerup',e=>{
+  if(!calib||e.target.closest('#panel,#show'))return;
+  const g=geom(),r=stage.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
+  const px=Math.round(((g.m?g.sw-sx:sx)-g.ox)/(g.k*g.s)),py=Math.round((sy-g.oy)/(g.k*g.s));
+  const d=frame(g);let a=0,b=0,c=0,n=0;
+  for(let y=py-3;y<=py+3;y++)for(let x=px-3;x<=px+3;x++){if(x<0||y<0||x>=LW||y>=g.lh)continue;const i=(y*LW+x)*4;a+=d[i];b+=d[i+1];c+=d[i+2];n++}
+  if(!n)return;
+  T={ref:[a/n,b/n,c/n],cx:px,cy:py};S=null;calib=false;card.classList.remove('calib');status();
+});
+function trackStep(){
+  if(!T||!vid.videoWidth)return;
+  const g=geom(),d=frame(g),H=g.lh,tol=+$('tol').value,t2=tol*tol,[r0,g0,b0]=T.ref;
+  const ok=(x,y)=>{if(x<0||y<0||x>=LW||y>=H)return false;const i=(y*LW+x)*4,p=d[i]-r0,q=d[i+1]-g0,u=d[i+2]-b0;return p*p+q*q+u*u<t2};
+  let sx=Math.round(T.cx),sy=Math.round(T.cy),found=ok(sx,sy);
+  for(let rad=1;!found&&rad<=8;rad++)for(let dy=-rad;dy<=rad&&!found;dy++)for(let dx=-rad;dx<=rad;dx++)if(ok(sx+dx,sy+dy)){sx+=dx;sy+=dy;found=true;break}
+  if(!found){if(!lost){lost=true;$('chip').textContent='Carte perdue : remets-la dans le cadre'}return}
+  const seen=new Uint8Array(LW*H),st=new Int32Array(LW*H);let sp=0,n=0,mx=0,my=0,mxx=0,myy=0,mxy=0,sr=0,sg=0,sb=0;
+  st[sp++]=sy*LW+sx;seen[sy*LW+sx]=1;
+  while(sp){const v=st[--sp],x=v%LW,y=(v/LW)|0,i=v*4;n++;mx+=x;my+=y;mxx+=x*x;myy+=y*y;mxy+=x*y;sr+=d[i];sg+=d[i+1];sb+=d[i+2];
+    for(const[nx,ny]of[[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){if(ok(nx,ny)){const w=ny*LW+nx;if(!seen[w]){seen[w]=1;st[sp++]=w}}}}
+  if(n<25||n>.6*LW*H){if(!lost){lost=true;$('chip').textContent='Carte perdue : remets-la dans le cadre'}return}
+  if(lost){lost=false;status()}
+  const cx=mx/n,cy=my/n,vxx=mxx/n-cx*cx,vyy=myy/n-cy*cy,vxy=mxy/n-cx*cy;
+  T.cx=cx;T.cy=cy;T.ref=T.ref.map((v,j)=>v*.95+[sr,sg,sb][j]/n*.05);
+  const h=(vxx+vyy)/2,q=Math.sqrt(((vxx-vyy)/2)**2+vxy*vxy),l1=h+q,l2=Math.max(h-q,.01);
+  const x=(g.m?g.sw-(g.ox+cx*g.k*g.s):g.ox+cx*g.k*g.s),y=g.oy+cy*g.k*g.s;
+  const w=Math.sqrt(12*l1)*g.k*g.s*5/7*(+$('size').value/42);
+  let th=.5*Math.atan2(2*vxy,vxx-vyy)*180/Math.PI;if(g.m)th=-th;
+  let rot=th-90;rot=((rot+90)%180+180)%180-90;
+  if(!S)S={x,y,w,rot};
+  else{S.x+=(x-S.x)*.5;S.y+=(y-S.y)*.5;S.w+=(w-S.w)*.4;
+    if(l1/l2>1.3){const df=((rot-S.rot+90)%180+180)%180-90;S.rot+=df*.4}}
+  card.style.width=S.w+'px';card.style.left=(S.x-S.w/2)+'px';card.style.top=(S.y-S.w*.7)+'px';
+  card.style.setProperty('--rot',S.rot+'deg');
+}
+(function lp(){trackStep();requestAnimationFrame(lp)})();
+$('trk').onclick=()=>{
+  if(T||calib){T=null;calib=false;S=null;lost=false;card.classList.remove('calib');card.style.setProperty('--rot','0deg');$('trk').textContent='Suivre ma carte';status();return}
+  calib=true;card.classList.add('calib');$('panel').hidden=true;$('show').style.display='block';
+  $('chip').textContent='Montre ta carte, puis touche-la à l’écran';$('trk').textContent='Arrêter le suivi';
+};
+
+/* --- Démarrage --- */
+$('go').onclick=async()=>{
+  $('err').textContent='';
+  let stream,micOk=true;
+  const vc={facingMode:'user',width:{ideal:1280},height:{ideal:720}};
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:vc,audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  }catch(e){
+    try{stream=await navigator.mediaDevices.getUserMedia({video:vc});micOk=false}
+    catch(e2){$('err').textContent="Impossible d'ouvrir la caméra. Autorise-la dans ton navigateur, ou ouvre cette page dans un onglet à part."; return}
+  }
+  vid.srcObject=stream;await vid.play().catch(()=>{});
+  $('start').style.display='none';stage.style.display='block';
+  place();armed=true;
+  if(micOk)listen(stream);else $('chip').textContent='Micro refusé : utilise « Claquer (manuel) »';
+};
+</script>
+</body>
+</html>
